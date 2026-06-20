@@ -19,6 +19,18 @@ export interface MCResult {
   convergence: number[]
 }
 
+export interface SimulationRecord {
+  id: string
+  scenario: string
+  scenarioName: string
+  iterations: number
+  estimate: number
+  trueValue?: number
+  error?: number
+  createdAt: number
+  date: string
+}
+
 export interface HypTestResult {
   testType: string
   statistic: number
@@ -106,16 +118,63 @@ export const SCENARIOS: MCScenario[] = [
   { id: 'gambler', name: '赌徒破产', description: '不利赌局下资金耗尽概率估算', params: { p: 0.45, bankroll: 50, goal: 100 }, category: '概率' }
 ]
 
+const STORAGE_KEY = 'mc_simulation_history'
+
+function loadHistory(): SimulationRecord[] {
+  try {
+    const data = localStorage.getItem(STORAGE_KEY)
+    return data ? JSON.parse(data) : []
+  } catch {
+    return []
+  }
+}
+
+function saveHistory(records: SimulationRecord[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
+  } catch {
+  }
+}
+
+function formatDateKey(ts: number): string {
+  const d = new Date(ts)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
 export const useMCStore = defineStore('mc', () => {
   const currentScenario = ref<MCScenario>(SCENARIOS[0])
   const iterations = ref(1000)
   const result = ref<MCResult | null>(null)
   const testResult = ref<HypTestResult | null>(null)
   const isRunning = ref(false)
+  const history = ref<SimulationRecord[]>(loadHistory())
 
   function runSimulation() {
     isRunning.value = true
-    setTimeout(() => { result.value = runMC(currentScenario.value, iterations.value); isRunning.value = false }, 10)
+    setTimeout(() => {
+      result.value = runMC(currentScenario.value, iterations.value)
+      const record: SimulationRecord = {
+        id: generateId(),
+        scenario: result.value.scenario,
+        scenarioName: currentScenario.value.name,
+        iterations: result.value.iterations,
+        estimate: result.value.estimate,
+        trueValue: result.value.trueValue,
+        error: result.value.error,
+        createdAt: Date.now(),
+        date: formatDateKey(Date.now())
+      }
+      history.value.unshift(record)
+      saveHistory(history.value)
+      isRunning.value = false
+    }, 10)
   }
 
   function runTest(g1: number[], g2: number[]) {
@@ -148,5 +207,59 @@ export const useMCStore = defineStore('mc', () => {
     return { xAxis: Array.from({ length: bins }, (_, i) => Math.round((mn + i * bs) * 100) / 100), data: counts }
   })
 
-  return { currentScenario, iterations, result, testResult, isRunning, convergenceData, histogramData, runSimulation, runTest, setScenario }
+  const historyByDate = computed(() => {
+    const map = new Map<string, SimulationRecord[]>()
+    history.value.forEach(r => {
+      if (!map.has(r.date)) map.set(r.date, [])
+      map.get(r.date)!.push(r)
+    })
+    return map
+  })
+
+  const dateList = computed(() => {
+    const set = new Set(history.value.map(r => r.date))
+    return Array.from(set).sort((a, b) => b.localeCompare(a))
+  })
+
+  const totalSimulations = computed(() => history.value.length)
+
+  const todayCount = computed(() => {
+    const today = formatDateKey(Date.now())
+    return history.value.filter(r => r.date === today).length
+  })
+
+  function clearHistory() {
+    history.value = []
+    saveHistory([])
+  }
+
+  function removeRecord(id: string) {
+    history.value = history.value.filter(r => r.id !== id)
+    saveHistory(history.value)
+  }
+
+  function getRecordsByDate(date: string) {
+    return history.value.filter(r => r.date === date)
+  }
+
+  return {
+    currentScenario,
+    iterations,
+    result,
+    testResult,
+    isRunning,
+    history,
+    historyByDate,
+    dateList,
+    totalSimulations,
+    todayCount,
+    convergenceData,
+    histogramData,
+    runSimulation,
+    runTest,
+    setScenario,
+    clearHistory,
+    removeRecord,
+    getRecordsByDate
+  }
 })

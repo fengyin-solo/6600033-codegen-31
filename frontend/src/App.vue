@@ -33,6 +33,7 @@
             <div class="flex justify-between"><span class="text-slate-500">样本数</span><span class="text-slate-300">{{ store.result.iterations }}</span></div>
           </div>
         </div>
+        <ExperimentCalendar />
       </div>
       <div class="lg:w-3/4 space-y-4">
         <div class="bg-slate-800 rounded-lg p-4 border border-slate-700">
@@ -72,6 +73,7 @@
 import { ref, watch, onMounted } from 'vue'
 import * as echarts from 'echarts'
 import { useMCStore, SCENARIOS } from './store/mc'
+import ExperimentCalendar from './components/ExperimentCalendar.vue'
 
 const store = useMCStore()
 const convergenceRef = ref<HTMLDivElement | null>(null)
